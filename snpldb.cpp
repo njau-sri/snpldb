@@ -585,6 +585,8 @@ namespace {
 
 int snpldb(int argc, char *argv[])
 {
+    std::cerr << "snpldb (Built on " __DATE__ " " __TIME__ ")\n";
+
     CmdLine cmd("snpldb [options]");
 
     cmd.add("--vcf", "VCF file", "");
