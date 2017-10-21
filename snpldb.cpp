@@ -585,7 +585,7 @@ namespace {
 
 int snpldb(int argc, char *argv[])
 {
-    std::cerr << "snpldb (Built on " __DATE__ " " __TIME__ ")\n";
+    std::cerr << "SNPLDB (Built on " __DATE__ " " __TIME__ ")\n";
 
     CmdLine cmd("snpldb [options]");
 
