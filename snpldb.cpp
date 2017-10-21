@@ -43,18 +43,18 @@ namespace {
 
     // Estimates haplotype frequencies via the EM algorithm
     // AB, Ab, aB, ab, AaBb
-    void calc_hap_prob_EM(int n11, int n12, int n21, int n22, int nhet, double &p11, double &p12, double &p21, double &p22)
+    void calc_hap_prob_EM(int n11, int n12, int n21, int n22, int ndh, double &p11, double &p12, double &p21, double &p22)
     {
         static const int maxit = 1000;
-        static const double tol = 1e-7;
+        static const double tol = 1e-10;
 
-        double n = n11 + n12 + n21 + n22;
+        double n = n11 + n12 + n21 + n22 + ndh * 2;
         p11 = n11 / n;
         p12 = n12 / n;
         p21 = n21 / n;
         p22 = n22 / n;
 
-        if (nhet == 0)
+        if (ndh == 0)
             return;
 
         auto cp11 = p11;
@@ -62,7 +62,7 @@ namespace {
         auto cp21 = p21;
         auto cp22 = p22;
 
-        auto h = nhet / n;
+        auto h = ndh / n;
         auto x = h / 2;
         auto y = h - x;
 
@@ -109,9 +109,9 @@ namespace {
         int n12 = f[0][2] * 2 + f[0][1] + f[1][2];
         int n21 = f[2][0] * 2 + f[1][0] + f[2][1];
         int n22 = f[2][2] * 2 + f[2][1] + f[1][2];
-        int nhet = f[1][1];
+        int ndh = f[1][1];
 
-        double nn = n11 + n12 + n21 + n22 + nhet * 2;
+        double nn = n11 + n12 + n21 + n22 + ndh * 2;
         if (nn < 4)
             return 1;
 
@@ -120,7 +120,7 @@ namespace {
         double p21 = 0.0;
         double p22 = 0.0;
 
-        calc_hap_prob_EM(n11, n12, n21, n22, nhet, p11, p12, p21, p22);
+        calc_hap_prob_EM(n11, n12, n21, n22, ndh, p11, p12, p21, p22);
 
         if (n11 > n22) {
             std::swap(n11, n22);
@@ -144,9 +144,9 @@ namespace {
             }
         }
 
-        auto p1x = (n11 + n12 + nhet) / nn;
+        auto p1x = (n11 + n12 + ndh) / nn;
         auto p2x = 1 - p1x;
-        auto px1 = (n11 + n21 + nhet) / nn;
+        auto px1 = (n11 + n21 + ndh) / nn;
         auto px2 = 1 - px1;
 
         auto D = p11 - p1x*px1;
@@ -156,7 +156,7 @@ namespace {
         if (p12 < 1e-10) p12 = 1e-10;
         if (p21 < 1e-10) p21 = 1e-10;
         if (p22 < 1e-10) p22 = 1e-10;
-        auto LL1 = n11*log(p11) + n12*log(p12) + n21*log(p21) + n22*log(p22) + nhet*log(p11*p22 + p12*p21);
+        auto LL1 = n11*log(p11) + n12*log(p12) + n21*log(p21) + n22*log(p22) + ndh*log(p11*p22 + p12*p21);
 
         if (D < 0.0) {
             std::swap(p1x, p2x);
@@ -179,7 +179,7 @@ namespace {
                 if (q21 < 1e-10) q21 = 1e-10;
                 if (q22 < 1e-10) q22 = 1e-10;
             }
-            auto LL2 = n11*log(q11) + n12*log(q12) + n21*log(q21) + n22*log(q22) + nhet*log(q11*q22 + q12*q21);
+            auto LL2 = n11*log(q11) + n12*log(q12) + n21*log(q21) + n22*log(q22) + ndh*log(q11*q22 + q12*q21);
             auto prob = std::exp(LL2 - LL1);
             ls[i] = prob;
             tp += prob;
