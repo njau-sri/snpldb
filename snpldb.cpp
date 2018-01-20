@@ -517,7 +517,7 @@ namespace {
                 stop = pos;
         }
 
-        auto loc = gt.chr[snps[0]] + "_LDB_" + std::to_string(start) + "_" + std::to_string(stop);
+        auto loc = "LDB_" + gt.chr[snps[0]] + "_" + std::to_string(start) + "_" + std::to_string(stop);
         ogt.loc.push_back(loc);
         ogt.chr.push_back(gt.chr[snps[0]]);
         ogt.pos.push_back(start);
@@ -695,7 +695,7 @@ int snpldb(int argc, char *argv[])
                 }
             }
             else {
-                ldb.loc.push_back(gt.loc[j]);
+                ldb.loc.push_back("LDB_" + gt.loc[j]);
                 ldb.chr.push_back(gt.chr[j]);
                 ldb.pos.push_back(gt.pos[j]);
                 ldb.dat.push_back(gt.dat[j]);
