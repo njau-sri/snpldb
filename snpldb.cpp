@@ -79,37 +79,28 @@ namespace {
         }
     }
 
-    // D' 95% confidence interval estimate
-    int calc_dprime_CI(int ploidy, const std::vector<allele_t> &x, const std::vector<allele_t> &y, int &lower, int &upper)
+    void count_freq_3x3(const std::vector<char> &x, const std::vector<char> &y, const std::vector<char> &mx, const std::vector<char> &my, int freq[3][3])
     {
-        size_t n = x.size() / ploidy;
-        int f[3][3] = { { 0,0,0 },{ 0,0,0 },{ 0,0,0 } };
+        int n = x.size();
 
-        if (ploidy == 1) {
-            for (size_t i = 0; i < n; ++i) {
-                if (x[i] && y[i]) {
-                    auto a = x[i] * 2 - 2;
-                    auto b = y[i] * 2 - 2;
-                    f[a][b] += 1;
-                }
-            }
-        }
-        else if (ploidy == 2) {
-            for (size_t i = 0; i < n; ++i) {
-                auto i1 = i * 2, i2 = i * 2 + 1;
-                if (x[i1] && x[i2] && y[i1] && y[i2]) {
-                    auto a = x[i1] + x[i2] - 2;
-                    auto b = y[i1] + y[i2] - 2;
-                    f[a][b] += 1;
-                }
-            }
-        }
+        freq[0][0] = freq[0][1] = freq[0][2] = 0;
+        freq[1][0] = freq[1][1] = freq[1][2] = 0;
+        freq[2][0] = freq[2][1] = freq[2][2] = 0;
 
-        int n11 = f[0][0] * 2 + f[0][1] + f[1][0];
-        int n12 = f[0][2] * 2 + f[0][1] + f[1][2];
-        int n21 = f[2][0] * 2 + f[1][0] + f[2][1];
-        int n22 = f[2][2] * 2 + f[2][1] + f[1][2];
-        int ndh = f[1][1];
+        for (int i = 0; i < n; ++i) {
+            if (mx[i] && my[i])
+                ++freq[x[i]][y[i]];
+        }
+    }
+
+    // D' 95% confidence interval estimate
+    int calc_dprime_CI(int freq[3][3], int &lower, int &upper)
+    {
+        int n11 = freq[0][0] * 2 + freq[0][1] + freq[1][0];
+        int n12 = freq[0][2] * 2 + freq[0][1] + freq[1][2];
+        int n21 = freq[2][0] * 2 + freq[1][0] + freq[2][1];
+        int n22 = freq[2][2] * 2 + freq[2][1] + freq[1][2];
+        int ndh = freq[1][1];
 
         double nn = n11 + n12 + n21 + n22 + ndh * 2;
         if (nn < 4)
@@ -168,7 +159,7 @@ namespace {
         double ls[101];
         auto Dstep = Dmax / 100;
 
-        for (int i = 0; i < 101; ++i) {
+        for (int i = 0; i <= 100; ++i) {
             auto q11 = i*Dstep + p1x*px1;
             auto q12 = p1x - q11;
             auto q21 = px1 - q11;
@@ -187,7 +178,7 @@ namespace {
 
         double sp = 0.0;
         auto tp5 = tp * 0.05;
-        for (int i = 0; i < 101; ++i) {
+        for (int i = 0; i <= 100; ++i) {
             sp += ls[i];
             if (sp > tp5 && sp - ls[i] < tp5) {
                 lower = i - 1;
@@ -222,7 +213,7 @@ namespace {
             recomb = true;
     }
 
-    double test_block_Gabriel(int x, int y, int n, const std::vector< std::vector<bool> > &sr, const std::vector< std::vector<bool> > &ss)
+    double test_block_Gabriel(int x, int y, int n, const std::vector< std::vector<char> > &sr, const std::vector< std::vector<char> > &ss)
     {
         int s = 0, r = 0;
         for (int i = x; i <= y; ++i) {
@@ -259,20 +250,55 @@ namespace {
         return -4;
     }
 
-    void find_block_Gabriel(const Genotype &gt, const std::vector<int> &snps, std::vector< std::pair<int, int> > &ppos)
+    int find_block_Gabriel(const Genotype &gt, const std::vector<int> &snps, std::vector< std::pair<int, int> > &ppos)
     {
-        // !!! polymorphic & bi-allelic only !!!
+        int n = gt.ind.size();
+        bool diploid = gt.ploidy == 2;
 
-        int n = snps.size();
+        std::vector<int> pos;
+        std::vector< std::vector<char> > mask;
+        std::vector< std::vector<char> > geno;
+
+        for (auto j : snps) {
+            pos.push_back(gt.pos[j]);
+
+            std::vector<char> jmask(n, 0);  // 0,1 -> invalid,valid
+            std::vector<char> jgeno(n, 0);  // AA,Aa,aa -> 0,1,2
+
+            if (diploid) {
+                for (int i = 0; i < n; ++i) {
+                    auto a = gt.dat[j][2*i];
+                    auto b = gt.dat[j][2*i+1];
+                    if ((a == 1 || a == 2) && (b == 1 || b == 2)) {
+                        jmask[i] = 1;
+                        jgeno[i] = a + b - 2;
+                    }
+                }
+            }
+            else {
+                for (int i = 0; i < n; ++i) {
+                    auto a = gt.dat[j][i];
+                    if (a == 1 || a == 2) {
+                        jmask[i] = 1;
+                        jgeno[i] = (a - 1) * 2;
+                    }
+                }
+            }
+
+            mask.push_back(jmask);
+            geno.push_back(jgeno);
+        }
+
         int w = par.batch;
+        int m = pos.size();
 
-        for (int i = 0; i < n; ++i) {
-            auto pos1 = gt.pos[snps[i]];
-            for (int j = i + 1; j < n; ++j) {
-                auto pos2 = gt.pos[snps[j]];
+        for (int i = 0; i < m; ++i) {
+            auto pos1 = pos[i];
+            for (int j = i + 1; j < m; ++j) {
+                auto pos2 = pos[j];
                 if (pos2 <= pos1) {
                     std::cerr << "ERROR: chromosome positions must be in ascending order: " << pos1 << " " << pos2 << "\n";
-                    return;
+                    return 1;
                 }
                 auto dist = pos2 - pos1;
                 if (dist <= par.maxlen && w < (j - i + 1))
@@ -280,12 +306,14 @@ namespace {
             }
         }
 
-        if (w > n)
-            w = n;
+        if (w > m)
+            w = m;
 
-        std::vector<std::vector<int>> ci(w, std::vector<int>(w, -1));
-        std::vector<std::vector<bool>> sr(w, std::vector<bool>(w, false));
-        std::vector<std::vector<bool>> ss(w, std::vector<bool>(w, false));
+        int freq[3][3];
+
+        std::vector< std::vector<short> > ci(w, std::vector<short>(w, -1));
+        std::vector< std::vector<char> > sr(w, std::vector<char>(w, 0));
+        std::vector< std::vector<char> > ss(w, std::vector<char>(w, 0));
 
         int llim = -1, ulim = -1;
         bool strong = false, recomb = false, strong2 = false, strong34 = false;
@@ -298,16 +326,18 @@ namespace {
 
         for (;;) {
             for (int i = 0; i < w; ++i) {
-                auto x = snps[start + i];
-                auto pos1 = gt.pos[x];
+                auto x = start + i;
+                auto pos1 = pos[x];
                 for (int j = i + 1; j < w; ++j) {
-                    auto y = snps[start + j];
-                    auto pos2 = gt.pos[y];
+                    auto y = start + j;
+                    auto pos2 = pos[y];
                     if (pos2 - pos1 > par.maxlen)
                         break;
 
+                    count_freq_3x3(geno[x], geno[y], mask[x], mask[y], freq);
+
                     llim = ulim = -1;
-                    calc_dprime_CI(ploidy, gt.dat[x], gt.dat[y], llim, ulim);
+                    calc_dprime_CI(freq, llim, ulim);
 
                     strong = recomb = strong2 = strong34 = false;
                     classify_dprime_CI(llim, ulim, strong, recomb, strong2, strong34);
@@ -322,9 +352,9 @@ namespace {
             }
 
             for (int i = 0; i < w; ++i) {
-                auto pos1 = gt.pos[snps[start + i]];
+                auto pos1 = pos[start + i];
                 for (int j = i + 1; j < w; ++j) {
-                    auto pos2 = gt.pos[snps[start + j]];
+                    auto pos2 = pos[start + j];
                     auto dist = pos2 - pos1;
                     if (dist > par.maxlen)
                         break;
@@ -339,22 +369,25 @@ namespace {
                 }
             }
 
-            if (start + w >= n)
+            if (start + w >= m)
                 break;
 
-            auto pos2 = gt.pos[snps[start + w]];
+            auto pos2 = pos[start + w];
             for (int i = 1; i < w; ++i) {
-                auto pos1 = gt.pos[snps[++start]];
+                auto pos1 = pos[++start];
                 auto dist = pos2 - pos1;
                 if (pos2 - pos1 <= par.maxlen)
                     break;
             }
 
-            if (start + w >= n)
-                w = n - start;
+            if (start + w >= m)
+                w = m - start;
 
             std::cerr << "INFO: " << start + 1 << " - " << start + w << "\n";
         }
+
+        if (blks.empty())
+            return 0;
 
         auto cmp = [&](const Block &a, const Block &b) {
             if (a.length > b.length) return true;
@@ -362,9 +395,12 @@ namespace {
             if ((b.first > a.first && b.first < a.last) || (b.last > a.first && b.last < a.last)) {
                 if (a.inform > b.inform) return true;
                 if (a.inform < b.inform) return false;
-                int a1 = -1, a2 = -1, b1 = -1, b2 = -1;
-                calc_dprime_CI(ploidy, gt.dat[snps[a.first]], gt.dat[snps[a.last]], a1, a2);
-                calc_dprime_CI(ploidy, gt.dat[snps[b.first]], gt.dat[snps[b.last]], b1, b2);
+                int a1 = -1, a2 = -1;
+                count_freq_3x3(geno[a.first], geno[a.last], mask[a.first], mask[a.last], freq);
+                calc_dprime_CI(freq, a1, a2);
+                int b1 = -1, b2 = -1;
+                count_freq_3x3(geno[b.first], geno[b.last], mask[b.first], mask[b.last], freq);
+                calc_dprime_CI(freq, b1, b2);
                 if (a1 > b1) return true;
                 if (a1 < b1) return false;
             }
@@ -373,18 +409,20 @@ namespace {
 
         std::sort(blks.begin(), blks.end(), cmp);
 
-        std::vector<bool> inblock(n + 1, false);
+        std::vector<bool> inblock(m + 1, false);
 
         for (auto &e : blks) {
             auto first = e.first, last = e.last;
             if (inblock[first] || inblock[last])
                 continue;
-            ppos.emplace_back(gt.pos[snps[first]], gt.pos[snps[last]]);
+            ppos.emplace_back(pos[first], pos[last]);
             for (auto i = first; i <= last; ++i)
                 inblock[i] = true;
         }
 
         std::sort(ppos.begin(), ppos.end());
+
+        return 0;
     }
 
     int read_block(const std::string &filename, std::vector<std::string> &chr, std::vector<int> &pos1, std::vector<int> &pos2)
@@ -641,9 +679,10 @@ int snpldb(int argc, char *argv[])
 
     if (blk_chr.empty()) {
         for (int i = 0; i < nchr; ++i) {
-            std::cerr << "INFO: finding blocks on chromosome: " << chrid[i] << "\n";
-            std::vector<std::pair<int, int>> ppos;
-            find_block_Gabriel(gt, snps[i], ppos);
+            std::cerr << "INFO: finding blocks on chromosome " << chrid[i] << "\n";
+            std::vector< std::pair<int,int> > ppos;
+            if (find_block_Gabriel(gt, snps[i], ppos) != 0)
+                return 1;
             blk_chr.insert(blk_chr.end(), ppos.size(), chrid[i]);
             for (auto &e : ppos) {
                 blk_pos1.push_back(e.first);
