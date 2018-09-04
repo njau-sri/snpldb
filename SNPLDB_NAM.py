@@ -1,5 +1,4 @@
 import sys
-import random
 
 def read_blocks(infile):
     chr, start, stop = [], [], []
@@ -39,7 +38,7 @@ def index_family_rils(ns):
         idx.append( [e + a for e in range(ns[i])] )
     return idx
 
-# layout cp p1 p2 p3 n11 n12 ... n21 n22 ... n31 n32 ...
+# layout: cp p1 p2 p3 n11 n12 ... n21 n22 ... n31 n32 ...
 def group_snps(geno, ns):
     n = len(geno[0])
     m = len(geno)
